@@ -9,11 +9,10 @@ import Foundation
 
 /// 下载状态枚举
 public enum DownloadTaskState {
-    case notStarted  // 创建下载任务后处在 notStarted 状态
+    case stopped     // 创建下载任务后处在 stopped 状态
     case waiting     // 加入下载队列后处在 waiting 状态
     case started     // 开始下载任务
     case paused      // 下载任务被主动暂停
-    case stopped     // 下载任务被主动停止
     case completed   // 下载任务完成下载
 }
 
@@ -29,7 +28,7 @@ public class DownloadTask: NSObject {
     
     public var delegate: DownloadTaskDelegate?
     public var progress: Float = 0.0
-    public var state: DownloadTaskState = .notStarted {
+    public var state: DownloadTaskState = .stopped {
         didSet{
             delegate?.download(self, changeState: state)
         }
@@ -46,6 +45,8 @@ public class DownloadTask: NSObject {
         self.url = url
         super.init()
     }
+    
+    
 }
 
 
