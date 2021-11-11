@@ -20,13 +20,26 @@ public enum DownloadTaskState {
 public protocol DownloadTaskDelegate: AnyObject {
     
     func download(_ download: DownloadTask, changeState state: DownloadTaskState)
+    func download(_ download: DownloadTask, downloaing bytes: Int64, progress: Progress)
     func download(_ download: DownloadTask, completedWithError: Error?)
-    func download(_ download: DownloadTask, didReceiveData data: Data, progress: Float)
 }
 
 /// 借鉴 Alamofire 设置目标存储地址的思路
 
 public class DownloadTask: NSObject {
+    
+    public struct FileHandleOptions: OptionSet {
+        public let rawValue: UInt
+        public static let createIntermediateDirectories = FileHandleOptions(rawValue: 1 << 0)
+        public static let removePreviousFile = FileHandleOptions(rawValue: 1 << 1)
+        public init(rawValue: UInt) {
+            self.rawValue = rawValue
+        }
+    }
+    
+    public typealias FileDestination = (_ temporaryURL: URL) -> (destinationURL: URL, options: FileHandleOptions)
+    
+    public var destination: FileDestination?
     
     public var delegate: DownloadTaskDelegate?
     public var state: DownloadTaskState = .stopped {
@@ -39,10 +52,9 @@ public class DownloadTask: NSObject {
     public var totalBytesCount: Int64 = 0
     public var downloadingBytesRate: Int64 = 0
     
-    public var progress: Float { totalBytesCount == 0 ? 0 : min(1.0, Float(totalBytesReceived)/Float(totalBytesCount)) }
-    
     public var downloadTask: URLSessionDownloadTask?
     public var resumeData: Data?
+    public var error: Error?
     
     public let url: URL
     
