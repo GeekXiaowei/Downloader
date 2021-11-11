@@ -1,6 +1,6 @@
 //
-//  Downloading.swift
-//  Downloader
+//  DownloadTask.swift
+//  DownloadTask
 //
 //  Created by 伟亭徐 on 2021/11/4.
 //
@@ -24,10 +24,11 @@ public protocol DownloadTaskDelegate: AnyObject {
     func download(_ download: DownloadTask, didReceiveData data: Data, progress: Float)
 }
 
+/// 借鉴 Alamofire 设置目标存储地址的思路
+
 public class DownloadTask: NSObject {
     
     public var delegate: DownloadTaskDelegate?
-    public var progress: Float = 0.0
     public var state: DownloadTaskState = .stopped {
         didSet{
             delegate?.download(self, changeState: state)
@@ -36,8 +37,12 @@ public class DownloadTask: NSObject {
     
     public var totalBytesReceived: Int64 = 0
     public var totalBytesCount: Int64 = 0
+    public var downloadingBytesRate: Int64 = 0
+    
+    public var progress: Float { totalBytesCount == 0 ? 0 : min(1.0, Float(totalBytesReceived)/Float(totalBytesCount)) }
     
     public var downloadTask: URLSessionDownloadTask?
+    public var resumeData: Data?
     
     public let url: URL
     
@@ -46,7 +51,8 @@ public class DownloadTask: NSObject {
         super.init()
     }
     
-    
 }
+
+
 
 

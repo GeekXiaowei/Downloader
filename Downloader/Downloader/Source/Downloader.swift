@@ -15,6 +15,12 @@ extension DownloadTask {
         case .completed, .started: break
         default:
             state = .started
+            
+            if let resumeData = self.resumeData {
+                // 
+            }else{
+                task.resume()
+            }
             task.resume()
         }
     }
@@ -30,7 +36,10 @@ extension DownloadTask {
         guard let task = downloadTask else { return }
         guard state == .started || state == .paused else { return }
         state = .started
-        task.cancel()
+        
+        task.cancel { resumeData in
+            self.resumeData = resumeData
+        }
     }
 }
 
@@ -88,9 +97,21 @@ public class Downloader: NSObject {
 }
 
 extension Downloader: URLSessionDownloadDelegate {
-    
+    /// 创建NSURLSession使用backgroundSessionConfigurationWithIdentifier方法设置一个标识.在应用被杀掉前，iOS系统保存应用下载sesson的信息，在重新启动应用，并且创建和之前相同identifier的session时（苹果通过identifier找到对应的session数据），iOS系统会对之前下载中的任务进行依次回调URLSession:task:didCompleteWithError:方法，之后可以使用上面提到的下载失败时的处理方法进行恢复下载
     public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        print("didCompleteWithError: \(String(describing: error))")
+        if let error = error {
+            // 下载发生错误
+            if let resumeData = (error as? NSError)?.userInfo[NSURLSessionDownloadTaskResumeData] as? Data {
+                // 可以重试的
+            }else{
+                
+                // 彻底失败的
+            }
+            
+        }else{
+            
+            // 正常下载完成
+        }
     }
     
     public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
