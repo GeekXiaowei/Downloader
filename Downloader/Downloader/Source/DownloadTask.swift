@@ -21,7 +21,7 @@ public protocol DownloadTaskDelegate: AnyObject {
     
     func download(_ download: DownloadTask, changeState state: DownloadTaskState)
     func download(_ download: DownloadTask, downloaing bytes: Int64, progress: Progress)
-    func download(_ download: DownloadTask, completedWithError: Error?)
+    func download(_ download: DownloadTask, completed error: Error?)
 }
 
 public class DownloadTask: NSObject {
@@ -38,6 +38,8 @@ public class DownloadTask: NSObject {
     public var totalBytesReceived: Int64 = 0
     public var totalBytesCount: Int64 = 0
     public var downloadingBytesCount: Int64 = 0
+    
+    public var progress: Float { totalBytesCount == 0 ? 0 : min(1.0, Float(totalBytesReceived)/Float(totalBytesCount)) }
     
     public var downloadTask: URLSessionDownloadTask?
     public var resumeData: Data?

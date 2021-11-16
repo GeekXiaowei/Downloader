@@ -19,15 +19,35 @@ class ViewController: UIViewController {
         guard let url = URL(string: urlString) else { return }
         
         task = DownloadTask(url: url)
-        
+        task?.delegate = self
     }
-
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+    
+    @IBAction func startDownload(_ sender: UIButton) {
         
         if let task = self.task {
             Downloader.shared.download(task: task)
         }
         
+    }
+    
+    @IBAction func pauseDownload(_ sender: UIButton) {
+        
+        if let task = self.task {
+            Downloader.shared.pauseDownload(task: task)
+        }
+    }
+}
+
+extension ViewController: DownloadTaskDelegate {
+    
+    func download(_ download: DownloadTask, changeState state: DownloadTaskState) {
+//        print(#function, "downloadState: \(state)")
+    }
+    func download(_ download: DownloadTask, downloaing bytes: Int64, progress: Progress) {
+//        print(#function, "bytes: \(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))")
+    }
+    func download(_ download: DownloadTask, completed error: Error?) {
+//        print(#function, "Error: \(String(describing: error))")
     }
 }
 

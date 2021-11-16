@@ -5,13 +5,13 @@
 //  Created by 伟亭徐 on 2021/11/4.
 //
 
-import Foundation
+import UIKit
 
 public class Downloader: NSObject {
     
     public static let shared = Downloader()
     
-    public static let backgroundIdentifier = "DownloaderBackgroundIdentifier"
+    public static let backgroundIdentifier = "Downloader.BackgroundIdentifier"
     /// 同时下载的最大个数
     public static var maximumDownloadingCount: Int = 4
     
@@ -20,8 +20,13 @@ public class Downloader: NSObject {
     public lazy var session: URLSession = {
         let config = URLSessionConfiguration.background(withIdentifier: Downloader.backgroundIdentifier)
         config.allowsCellularAccess = Downloader.allowsCellularAccess
+        config.isDiscretionary = true
+        config.sessionSendsLaunchEvents = true
         return URLSession(configuration: config, delegate: self, delegateQueue: .main)
     }()
+    
+    public var backgroundCompletionHandler: (() -> Void)?
+    
     /// 加入下载任务后默认都进入了准备下载队列
     public var downloadTasks:       [DownloadTask] = []
     /// 正在下载的任务集合，容量大小 maximumDownloadingCount
@@ -51,7 +56,7 @@ public class Downloader: NSObject {
         }
         
         if downloadingTasks.contains(task) {
-            task.downloadTask?.suspend()
+            task.downloadTask?.cancel(byProducingResumeData: { task.resumeData = $0 })
             task.state = .paused
             downloadingTasks.remove(task)
         }
@@ -61,8 +66,24 @@ public class Downloader: NSObject {
         execureDownloadingTaskFIFO()
     }
     
-    public func removeDownload(task: DownloadTask) {
+    public func cancelDownload(task: DownloadTask) {
         
+        guard downloadTasks.contains(task) || downloadingTasks.contains(task) else { return }
+        
+        if downloadTasks.contains(task) {
+            task.state = .stopped
+            downloadTasks.remove(task)
+        }
+        
+        if downloadingTasks.contains(task) {
+            task.downloadTask?.cancel(byProducingResumeData: { task.resumeData = $0 })
+            task.state = .stopped
+            downloadingTasks.remove(task)
+        }
+        
+        stopedDownloadTasks.append(task)
+        
+        execureDownloadingTaskFIFO()
     }
     
     private func execureDownloadingTaskFIFO() {
@@ -72,11 +93,11 @@ public class Downloader: NSObject {
             downloadingTasks.append(task)
             
             if let resumeData = task.resumeData {
-                session.downloadTask(withResumeData: resumeData)
+                task.downloadTask = session.downloadTask(withResumeData: resumeData)
             }
             
             if task.downloadTask == nil {
-                session.downloadTask(with: task.url)
+                task.downloadTask = session.downloadTask(with: task.url)
             }
             
             switch task.state {
@@ -90,15 +111,20 @@ public class Downloader: NSObject {
         }
     }
     
+    /// originalRequest or currentRequest，通常两者相同，但服务器重定向了初始请求时两者会不同。另外，如果任务是通过 resume data 恢复的，originalRequest为 nil，currentRequest代表当前使用的 url request
     fileprivate func downloadingTask(with sessionTask: URLSessionTask) -> DownloadTask? {
-        return downloadingTasks.filter({ $0.url == sessionTask.originalRequest?.url }).first
+        let requestUrl = sessionTask.originalRequest == nil ? sessionTask.currentRequest?.url : sessionTask.originalRequest?.url
+        return downloadingTasks.filter({ $0.url == requestUrl }).first
     }
 }
 
 extension Downloader: URLSessionDownloadDelegate {
     /// 创建NSURLSession使用backgroundSessionConfigurationWithIdentifier方法设置一个标.在应用被杀掉前，iOS系统保存应用下载sesson的信息，在重新启动应用，并且创建和之前相同identifier的session时（苹果通过identifier找到对应的session数据），iOS系统会对之前下载中的任务进行依次回调URLSession:task:didCompleteWithError:方法，之后可以使用上面提到的下载失败时的处理方法进行恢复下载
     public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        print("didCompleteWithError: \(String(describing: error))")
+        
+        print(#function, #line, "ErrorUserInfo: \(String(describing: (error as NSError?)?.userInfo))")
+        
+        
         if let downloadTask = downloadingTask(with: task) {
             if let error = error {
                 downloadTask.resumeData = (error as NSError).userInfo[NSURLSessionDownloadTaskResumeData] as? Data
@@ -107,16 +133,13 @@ extension Downloader: URLSessionDownloadDelegate {
             }else{
                 downloadTask.state = .completed
             }
-            downloadTask.delegate?.download(downloadTask, completedWithError: error)
+            downloadTask.delegate?.download(downloadTask, completed: error)
             downloadingTasks.remove(downloadTask)
             execureDownloadingTaskFIFO()
         }
     }
     
     public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-        
-        print("didFinishDownloadingTo: \(location)")
-        
         if let task = downloadingTask(with: downloadTask), let destination = task.destination {
             do {
                 if FileManager.default.fileExists(atPath: destination.path) {
@@ -132,15 +155,6 @@ extension Downloader: URLSessionDownloadDelegate {
     }
     
     public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
-        
-        let progress = Float(totalBytesWritten) / Float(totalBytesExpectedToWrite)
-        
-        let totalSize = ByteCountFormatter.string(fromByteCount: totalBytesExpectedToWrite, countStyle: .file)
-        
-        let size = ByteCountFormatter.string(fromByteCount: bytesWritten, countStyle: .file)
-        
-        print("progress: \(progress), totalSize: \(totalSize), size: \(size)")
-        
         if let task = downloadingTask(with: downloadTask) {
             let progress = Progress(totalUnitCount: 0)
             progress.completedUnitCount = totalBytesWritten
@@ -154,5 +168,17 @@ extension Downloader: URLSessionDownloadDelegate {
     
     public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didResumeAtOffset fileOffset: Int64, expectedTotalBytes: Int64) {
         print("didResumeAtOffset: \(fileOffset), expectedTotalBytes: \(expectedTotalBytes)")
+    }
+    
+    public func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+        self.backgroundCompletionHandler?()
+        self.backgroundCompletionHandler = nil
+    }
+}
+
+extension AppDelegate {
+    
+    func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
+        Downloader.shared.backgroundCompletionHandler = completionHandler
     }
 }
